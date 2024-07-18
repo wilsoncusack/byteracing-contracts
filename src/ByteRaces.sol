@@ -24,8 +24,8 @@ contract ByteRaces {
         uint256 winner;
     }
 
-    mapping(bytes32 raceId => RaceDetails details) _raceDetails;
-    mapping(bytes32 raceId => mapping(uint256 racerId => address payoutTo)) payoutAddress;
+    mapping(bytes32 raceId => mapping(uint256 racerId => address payoutTo)) public payoutAddress;
+    mapping(bytes32 raceId => RaceDetails details) internal _raceDetails;
 
     event RaceRegistered(
         bytes32 indexed raceId,
@@ -180,7 +180,7 @@ contract ByteRaces {
     }
 
     function _registerRacer(uint256 racerId, bytes32 raceId, address payoutTo) internal {
-        if (_raceDetails[raceId].registrationEnd < block.timestamp) {
+        if (_raceDetails[raceId].registrationEnd <= block.timestamp) {
             revert RegistrationEnded();
         }
 
