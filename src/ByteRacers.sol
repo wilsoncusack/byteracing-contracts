@@ -30,9 +30,8 @@ contract ByteRacers is ERC721 {
     }
 
     function tokenURI(uint256 id) public view override returns (string memory) {
-        if (ownerOf(id) != address(0)) {
-            revert InvalidTokenId(id);
-        }
+        // will revert if doesn't exist
+        ownerOf(id);
 
         return _tokenURI[id];
     }

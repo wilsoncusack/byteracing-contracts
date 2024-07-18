@@ -15,12 +15,12 @@ contract ByteRaces {
     struct RaceDetails {
         address creator;
         // 10 = 1%
-        // max 250 = 25%
+        // max 255 = 25.5%
         uint8 creatorTakePercent;
         uint40 registrationEnd;
-        uint48 racePosted;
+        uint40 racePosted;
         uint64 raceRegistrationFee;
-        uint64 totalFees;
+        uint72 totalFees;
         uint256 winner;
     }
 
@@ -52,6 +52,8 @@ contract ByteRaces {
     error InvalidRegistrationFee(uint256 expected, uint256 received);
     error InvalidSignature();
     error RacerAlreadyRegistered(bytes32 raceId, uint256 racerId);
+    error MaxFees();
+    error ZeroDonation();
 
     uint256 public constant CREATOR_TAKE_DENOMINATOR = 1000;
     uint256 public constant MIN_REGISTRATION_PERIOD = 0.5 hours;
@@ -61,6 +63,7 @@ contract ByteRaces {
         byteRacers = byteRacers_;
     }
 
+    /// @dev Users need to trust the race creator that the race has a valid solution
     function registerRace(bytes32 raceId, uint40 registrationEnd, uint64 raceRegistrationFee, uint8 creatorTakePercent)
         external
     {
@@ -81,6 +84,10 @@ contract ByteRaces {
     }
 
     function donate(bytes32 raceId) external payable {
+        if (msg.value == 0) {
+            revert ZeroDonation();
+        }
+
         if (_raceDetails[raceId].registrationEnd == 0) {
             revert RaceNotRegistered(raceId);
         }
@@ -89,7 +96,12 @@ contract ByteRaces {
             revert RaceWinnerAlreadyPosted(raceId);
         }
 
-        _raceDetails[raceId].totalFees += uint64(msg.value);
+        // extremely unlikely but, hey, gas is cheap
+        if (_raceDetails[raceId].totalFees + msg.value > type(uint72).max) {
+            revert MaxFees();
+        }
+
+        _raceDetails[raceId].totalFees += uint72(msg.value);
 
         emit Donated(raceId, msg.value);
     }
@@ -127,7 +139,7 @@ contract ByteRaces {
             revert RaceDetailsAlreadyPosted(raceId);
         }
 
-        _raceDetails[raceId].racePosted = uint48(block.timestamp);
+        _raceDetails[raceId].racePosted = uint40(block.timestamp);
 
         emit RaceDetailsPosted(raceId, map, start);
     }
@@ -182,7 +194,12 @@ contract ByteRaces {
 
         payoutAddress[raceId][racerId] = payoutTo;
 
-        _raceDetails[raceId].totalFees += uint64(msg.value);
+        // extremely unlikely but, hey, gas is cheap
+        if (_raceDetails[raceId].totalFees + msg.value > type(uint72).max) {
+            revert MaxFees();
+        }
+
+        _raceDetails[raceId].totalFees += uint72(msg.value);
 
         emit RacerRegistered(raceId, racerId);
     }
