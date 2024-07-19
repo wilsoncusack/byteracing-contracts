@@ -10,8 +10,6 @@ contract ByteRacers is ERC721 {
 
     event RacerMinted(uint256 indexed racerId, bytes byteCode);
 
-    uint256 internal _nonce;
-
     mapping(uint256 tokenId => string tokenURI) internal _tokenURI;
 
     function mint(bytes calldata byteCode) external returns (uint256 id) {

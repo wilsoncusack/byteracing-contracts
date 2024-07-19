@@ -55,6 +55,7 @@ contract ByteRaces {
     error MaxFees();
     error ZeroDonation();
     error ZeroAddress();
+    error CreatorOnly();
 
     uint256 public constant CREATOR_TAKE_DENOMINATOR = 1000;
     uint256 public constant MIN_REGISTRATION_PERIOD = 0.5 hours;
@@ -149,6 +150,10 @@ contract ByteRaces {
     function postWinner(bytes32 raceId, uint256 winningRacerId) external {
         if (_raceDetails[raceId].racePosted == 0) {
             revert RaceDetailsNotPosted(raceId);
+        }
+
+        if (msg.sender != _raceDetails[raceId].creator) {
+            revert CreatorOnly();
         }
 
         if (_raceDetails[raceId].winner != 0) {
