@@ -4,55 +4,53 @@ pragma solidity ^0.8.23;
 import "./ByteRace.t.sol";
 
 contract RegisterRacerForRaceTest is ByteRacesBaseTest {
-    function test_reverts_whenNotRacerOwner() public {
-        bytes32 id = byteRaces.getRaceId(map, startPosition);
-        byteRaces.registerRace(id, uint40(block.timestamp + byteRaces.MIN_REGISTRATION_PERIOD()), 1 ether, 10);
+    address owner = makeAddr("racer owner");
+    uint256 racerId;
+    bytes32 id;
+    uint40 registrationEnd;
+    uint64 raceRegistrationFee;
+    uint8 creatorTakePercent;
 
-        address owner = makeAddr("racer owner");
-        uint256 racerId = racers.mintTo({to: owner, byteCode: ""});
+    function setUp() public override {
+        super.setUp();
+        racerId = racers.mintTo({to: owner, byteCode: ""});
+        id = byteRaces.getRaceId(map, startPosition);
+        registrationEnd = uint40(block.timestamp + byteRaces.MIN_REGISTRATION_PERIOD());
+    }
+
+    function test_reverts_whenNotRacerOwner() public {
+        byteRaces.registerRace(id, registrationEnd, raceRegistrationFee, creatorTakePercent);
 
         vm.deal(address(this), 1 ether);
         vm.expectRevert(abi.encodeWithSelector(ByteRaces.OnlyRacerOwnerCanRegister.selector));
         byteRaces.registerRacerForRace{value: 1 ether}(racerId, id, address(this));
     }
 
-    function test_reverts_whenRegistrationEnded(uint40 registrationEnd) public {
-        vm.assume(registrationEnd > block.timestamp + byteRaces.MIN_REGISTRATION_PERIOD());
+    function test_reverts_whenRegistrationEnded(uint40 registrationEnd_) public {
+        vm.assume(registrationEnd_ > block.timestamp + byteRaces.MIN_REGISTRATION_PERIOD());
+        registrationEnd = registrationEnd_;
 
-        bytes32 id = byteRaces.getRaceId(map, startPosition);
-        byteRaces.registerRace(id, registrationEnd, 1 ether, 10);
+        byteRaces.registerRace(id, registrationEnd, raceRegistrationFee, creatorTakePercent);
 
-        address owner = makeAddr("racer owner");
-        uint256 racerId = racers.mintTo({to: owner, byteCode: ""});
-
-        vm.deal(owner, 1 ether);
-        vm.prank(owner);
         vm.warp(registrationEnd);
+        vm.prank(owner);
         vm.expectRevert(abi.encodeWithSelector(ByteRaces.RegistrationEnded.selector));
-        byteRaces.registerRacerForRace{value: 1 ether}(racerId, id, address(this));
+        byteRaces.registerRacerForRace(racerId, id, address(this));
     }
 
     function test_reverts_whenInvalidRegistrationFee(uint64 fee, uint64 badFee) public {
         vm.assume(badFee != fee);
 
-        bytes32 id = byteRaces.getRaceId(map, startPosition);
-        byteRaces.registerRace(id, uint40(block.timestamp + byteRaces.MIN_REGISTRATION_PERIOD()), badFee, 10);
+        byteRaces.registerRace(id, registrationEnd, fee, creatorTakePercent);
 
-        address owner = makeAddr("racer owner");
-        uint256 racerId = racers.mintTo({to: owner, byteCode: ""});
-
-        vm.deal(owner, fee);
+        vm.deal(owner, badFee);
         vm.prank(owner);
-        vm.expectRevert(abi.encodeWithSelector(ByteRaces.InvalidRegistrationFee.selector, badFee, fee));
-        byteRaces.registerRacerForRace{value: fee}(racerId, id, address(this));
+        vm.expectRevert(abi.encodeWithSelector(ByteRaces.InvalidRegistrationFee.selector, fee, badFee));
+        byteRaces.registerRacerForRace{value: badFee}(racerId, id, address(this));
     }
 
     function test_reverts_whenRacerAlreadyRegistered() public {
-        bytes32 id = byteRaces.getRaceId(map, startPosition);
-        byteRaces.registerRace(id, uint40(block.timestamp + byteRaces.MIN_REGISTRATION_PERIOD()), 1 ether, 10);
-
-        address owner = makeAddr("racer owner");
-        uint256 racerId = racers.mintTo({to: owner, byteCode: ""});
+        byteRaces.registerRace(id, registrationEnd, 1 ether, 10);
 
         vm.deal(owner, 2 ether);
         vm.startPrank(owner);
@@ -63,19 +61,20 @@ contract RegisterRacerForRaceTest is ByteRacesBaseTest {
         vm.stopPrank();
     }
 
-    function test_registersRacer(
-        uint40 registrationEnd,
-        uint64 raceRegistrationFee,
-        uint8 creatorTakePercent,
-        address payoutAddress
-    ) public {
-        vm.assume(registrationEnd > block.timestamp + byteRaces.MIN_REGISTRATION_PERIOD());
-
-        bytes32 id = byteRaces.getRaceId(map, startPosition);
+    function test_reverts_whenPayoutAddressZero() public {
         byteRaces.registerRace(id, registrationEnd, raceRegistrationFee, creatorTakePercent);
 
-        address owner = makeAddr("racer owner");
-        uint256 racerId = racers.mintTo({to: owner, byteCode: ""});
+        vm.deal(owner, raceRegistrationFee);
+        vm.prank(owner);
+        vm.expectRevert(ByteRaces.ZeroAddress.selector);
+        byteRaces.registerRacerForRace(racerId, id, address(0));
+    }
+
+    function test_registersRacer(uint64 raceRegistrationFee_, address payoutAddress) public {
+        vm.assume(payoutAddress != address(0));
+        raceRegistrationFee = raceRegistrationFee_;
+
+        byteRaces.registerRace(id, registrationEnd, raceRegistrationFee, creatorTakePercent);
 
         vm.deal(owner, raceRegistrationFee);
         vm.prank(owner);
@@ -85,16 +84,10 @@ contract RegisterRacerForRaceTest is ByteRacesBaseTest {
         assertEq(byteRaces.payoutAddress(raceId, racerId), payoutAddress);
     }
 
-    function test_emitsRacerRegistered(uint40 registrationEnd, uint64 raceRegistrationFee, uint8 creatorTakePercent)
-        public
-    {
-        vm.assume(registrationEnd > block.timestamp + byteRaces.MIN_REGISTRATION_PERIOD());
+    // test reverts if payout to address zero
 
-        bytes32 id = byteRaces.getRaceId(map, startPosition);
+    function test_emitsRacerRegistered() public {
         byteRaces.registerRace(id, registrationEnd, raceRegistrationFee, creatorTakePercent);
-
-        address owner = makeAddr("racer owner");
-        uint256 racerId = racers.mintTo({to: owner, byteCode: ""});
 
         vm.deal(owner, raceRegistrationFee);
         vm.prank(owner);
@@ -104,14 +97,8 @@ contract RegisterRacerForRaceTest is ByteRacesBaseTest {
     }
 
     function test_reverts_whenFeesExceedUint72() public {
-        uint8 creatorTakePercent = 0;
-        uint40 registrationEnd = uint40(block.timestamp + byteRaces.MIN_REGISTRATION_PERIOD());
         uint64 raceRegistrationFee = 1;
-        bytes32 id = byteRaces.getRaceId(map, startPosition);
         byteRaces.registerRace(id, registrationEnd, raceRegistrationFee, creatorTakePercent);
-
-        address owner = makeAddr("racer owner");
-        uint256 racerId = racers.mintTo({to: owner, byteCode: ""});
 
         vm.deal(address(this), type(uint72).max);
         byteRaces.donate{value: type(uint72).max}(id);

@@ -54,6 +54,7 @@ contract ByteRaces {
     error RacerAlreadyRegistered(bytes32 raceId, uint256 racerId);
     error MaxFees();
     error ZeroDonation();
+    error ZeroAddress();
 
     uint256 public constant CREATOR_TAKE_DENOMINATOR = 1000;
     uint256 public constant MIN_REGISTRATION_PERIOD = 0.5 hours;
@@ -117,7 +118,8 @@ contract ByteRaces {
         external
         payable
     {
-        if (!SignatureCheckerLib.isValidSignatureNowCalldata(byteRacers.ownerOf(racerId), raceId, signature)) {
+        bytes32 hash = SignatureCheckerLib.toEthSignedMessageHash(abi.encode(raceId, payoutTo));
+        if (!SignatureCheckerLib.isValidSignatureNowCalldata(byteRacers.ownerOf(racerId), hash, signature)) {
             revert InvalidSignature();
         }
         _registerRacer(racerId, raceId, payoutTo);
@@ -180,6 +182,10 @@ contract ByteRaces {
     }
 
     function _registerRacer(uint256 racerId, bytes32 raceId, address payoutTo) internal {
+        if (payoutTo == address(0)) {
+            revert ZeroAddress();
+        }
+
         if (_raceDetails[raceId].registrationEnd <= block.timestamp) {
             revert RegistrationEnded();
         }
