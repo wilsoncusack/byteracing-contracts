@@ -6,9 +6,9 @@ import {ByteRaces} from "../../src/ByteRaces.sol";
 import {ByteRacers} from "../../src/ByteRacers.sol";
 
 contract ByteRacesBaseTest is Test {
-    int8[][] map;
-    ByteRaces.Position startPosition;
-    bytes32 raceId;
+    int8[][] public map;
+    ByteRaces.Position public startPosition;
+    bytes32 public raceId;
     ByteRacers public racers = new ByteRacers();
     ByteRaces public byteRaces = new ByteRaces(racers);
 

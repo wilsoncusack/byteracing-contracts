@@ -178,7 +178,7 @@ contract ByteRaces {
         emit RaceWinnerPosted(raceId, winningRacerId);
     }
 
-    function getRaceId(int8[][] calldata map, Position calldata startPosition) public view returns (bytes32) {
+    function getRaceId(int8[][] calldata map, Position calldata startPosition) public pure returns (bytes32) {
         return keccak256(abi.encode(map, startPosition));
     }
 
