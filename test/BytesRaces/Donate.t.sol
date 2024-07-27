@@ -32,7 +32,7 @@ contract DonateTest is ByteRacesBaseTest {
         byteRaces.postRaceDetails(map, startPosition);
         byteRaces.postWinner(id, racerId);
         vm.deal(address(this), 1);
-        vm.expectRevert(abi.encodeWithSelector(ByteRaces.RaceWinnerAlreadyPosted.selector, id));
+        vm.expectRevert(abi.encodeWithSelector(ByteRaces.RaceWinnerAlreadyPosted.selector, id, racerId));
         byteRaces.donate{value: 1}(id);
     }
 

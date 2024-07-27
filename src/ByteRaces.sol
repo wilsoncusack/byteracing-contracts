@@ -19,7 +19,9 @@ contract ByteRaces {
         uint8 creatorTakePercent;
         uint40 registrationEnd;
         uint40 racePosted;
+        // max 18 eth 
         uint64 raceRegistrationFee;
+        // max prize pool 4.7k ETH
         uint72 totalFees;
         uint256 winner;
     }
@@ -36,7 +38,7 @@ contract ByteRaces {
     );
     event Donated(bytes32 indexed raceId, uint256 value);
     event RaceDetailsPosted(bytes32 indexed raceId, int8[][] map, Position start);
-    event RaceWinnerPosted(bytes32 indexed raceId, uint256 indexed winner);
+    event RaceWinnerPosted(bytes32 indexed raceId, uint256 indexed winningRacer);
     event RacerRegistered(bytes32 indexed raceId, uint256 indexed racerId);
 
     error AlreadyRegistered(bytes32 raceId);
@@ -45,7 +47,7 @@ contract ByteRaces {
     error RegistrationNotEnded(uint256 registrationEnd, uint256 currentTime);
     error RaceDetailsAlreadyPosted(bytes32 raceId);
     error RaceDetailsNotPosted(bytes32 raceId);
-    error RaceWinnerAlreadyPosted(bytes32 raceId);
+    error RaceWinnerAlreadyPosted(bytes32 raceId, uint256 winningRacer);
     error RacerNotRegistered(bytes32 raceId, uint256 racerId);
     error OnlyRacerOwnerCanRegister();
     error RegistrationEnded();
@@ -95,7 +97,7 @@ contract ByteRaces {
         }
 
         if (_raceDetails[raceId].winner != 0) {
-            revert RaceWinnerAlreadyPosted(raceId);
+            revert RaceWinnerAlreadyPosted(raceId, _raceDetails[raceId].winner);
         }
 
         // extremely unlikely but, hey, gas is cheap
@@ -156,13 +158,13 @@ contract ByteRaces {
             revert CreatorOnly();
         }
 
-        if (_raceDetails[raceId].winner != 0) {
-            revert RaceWinnerAlreadyPosted(raceId);
-        }
-
         address payoutTo = payoutAddress[raceId][winningRacerId];
         if (payoutTo == address(0)) {
             revert RacerNotRegistered(raceId, winningRacerId);
+        }
+
+        if (_raceDetails[raceId].winner != 0) {
+            revert RaceWinnerAlreadyPosted(raceId, _raceDetails[raceId].winner);
         }
 
         _raceDetails[raceId].winner = winningRacerId;
@@ -178,12 +180,12 @@ contract ByteRaces {
         emit RaceWinnerPosted(raceId, winningRacerId);
     }
 
-    function getRaceId(int8[][] calldata map, Position calldata startPosition) public pure returns (bytes32) {
-        return keccak256(abi.encode(map, startPosition));
-    }
-
     function raceDetails(bytes32 raceId) external view returns (RaceDetails memory) {
         return _raceDetails[raceId];
+    }
+
+    function getRaceId(int8[][] calldata map, Position calldata startPosition) public pure returns (bytes32) {
+        return keccak256(abi.encode(map, startPosition));
     }
 
     function _registerRacer(uint256 racerId, bytes32 raceId, address payoutTo) internal {
@@ -206,6 +208,7 @@ contract ByteRaces {
         payoutAddress[raceId][racerId] = payoutTo;
 
         // extremely unlikely but, hey, gas is cheap
+        // .. though if gas is cheap, maybe I should use uint256 :D 
         if (_raceDetails[raceId].totalFees + msg.value > type(uint72).max) {
             revert MaxFees();
         }
