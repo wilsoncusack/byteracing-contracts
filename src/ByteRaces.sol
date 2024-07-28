@@ -19,7 +19,7 @@ contract ByteRaces {
         uint8 creatorTakePercent;
         uint40 registrationEnd;
         uint40 racePosted;
-        // max 18 eth 
+        // max 18 eth
         uint64 raceRegistrationFee;
         // max prize pool 4.7k ETH
         uint72 totalFees;
@@ -208,7 +208,7 @@ contract ByteRaces {
         payoutAddress[raceId][racerId] = payoutTo;
 
         // extremely unlikely but, hey, gas is cheap
-        // .. though if gas is cheap, maybe I should use uint256 :D 
+        // .. though if gas is cheap, maybe I should use uint256 :D
         if (_raceDetails[raceId].totalFees + msg.value > type(uint72).max) {
             revert MaxFees();
         }
