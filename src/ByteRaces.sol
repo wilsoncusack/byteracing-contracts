@@ -15,17 +15,19 @@ contract ByteRaces {
     struct RaceDetails {
         address creator;
         // 10 = 1%
-        // max 250 = 25%
+        // max 255 = 25.5%
         uint8 creatorTakePercent;
         uint40 registrationEnd;
-        uint48 racePosted;
+        uint40 racePosted;
+        // max 18 eth
         uint64 raceRegistrationFee;
-        uint64 totalFees;
+        // max prize pool 4.7k ETH
+        uint72 totalFees;
         uint256 winner;
     }
 
-    mapping(bytes32 raceId => RaceDetails details) _raceDetails;
-    mapping(bytes32 raceId => mapping(uint256 racerId => address payoutTo)) payoutAddress;
+    mapping(bytes32 raceId => mapping(uint256 racerId => address payoutTo)) public payoutAddress;
+    mapping(bytes32 raceId => RaceDetails details) internal _raceDetails;
 
     event RaceRegistered(
         bytes32 indexed raceId,
@@ -36,7 +38,7 @@ contract ByteRaces {
     );
     event Donated(bytes32 indexed raceId, uint256 value);
     event RaceDetailsPosted(bytes32 indexed raceId, int8[][] map, Position start);
-    event RaceWinnerPosted(bytes32 indexed raceId, uint256 indexed winner);
+    event RaceWinnerPosted(bytes32 indexed raceId, uint256 indexed winningRacer);
     event RacerRegistered(bytes32 indexed raceId, uint256 indexed racerId);
 
     error AlreadyRegistered(bytes32 raceId);
@@ -45,13 +47,17 @@ contract ByteRaces {
     error RegistrationNotEnded(uint256 registrationEnd, uint256 currentTime);
     error RaceDetailsAlreadyPosted(bytes32 raceId);
     error RaceDetailsNotPosted(bytes32 raceId);
-    error RaceWinnerAlreadyPosted(bytes32 raceId);
+    error RaceWinnerAlreadyPosted(bytes32 raceId, uint256 winningRacer);
     error RacerNotRegistered(bytes32 raceId, uint256 racerId);
     error OnlyRacerOwnerCanRegister();
     error RegistrationEnded();
     error InvalidRegistrationFee(uint256 expected, uint256 received);
     error InvalidSignature();
     error RacerAlreadyRegistered(bytes32 raceId, uint256 racerId);
+    error MaxFees();
+    error ZeroDonation();
+    error ZeroAddress();
+    error CreatorOnly();
 
     uint256 public constant CREATOR_TAKE_DENOMINATOR = 1000;
     uint256 public constant MIN_REGISTRATION_PERIOD = 0.5 hours;
@@ -61,6 +67,7 @@ contract ByteRaces {
         byteRacers = byteRacers_;
     }
 
+    /// @dev Users need to trust the race creator that the race has a valid solution
     function registerRace(bytes32 raceId, uint40 registrationEnd, uint64 raceRegistrationFee, uint8 creatorTakePercent)
         external
     {
@@ -81,15 +88,24 @@ contract ByteRaces {
     }
 
     function donate(bytes32 raceId) external payable {
+        if (msg.value == 0) {
+            revert ZeroDonation();
+        }
+
         if (_raceDetails[raceId].registrationEnd == 0) {
             revert RaceNotRegistered(raceId);
         }
 
         if (_raceDetails[raceId].winner != 0) {
-            revert RaceWinnerAlreadyPosted(raceId);
+            revert RaceWinnerAlreadyPosted(raceId, _raceDetails[raceId].winner);
         }
 
-        _raceDetails[raceId].totalFees += uint64(msg.value);
+        // extremely unlikely but, hey, gas is cheap
+        if (_raceDetails[raceId].totalFees + msg.value > type(uint72).max) {
+            revert MaxFees();
+        }
+
+        _raceDetails[raceId].totalFees += uint72(msg.value);
 
         emit Donated(raceId, msg.value);
     }
@@ -105,7 +121,8 @@ contract ByteRaces {
         external
         payable
     {
-        if (!SignatureCheckerLib.isValidSignatureNowCalldata(byteRacers.ownerOf(racerId), raceId, signature)) {
+        bytes32 hash = SignatureCheckerLib.toEthSignedMessageHash(abi.encode(raceId, payoutTo));
+        if (!SignatureCheckerLib.isValidSignatureNowCalldata(byteRacers.ownerOf(racerId), hash, signature)) {
             revert InvalidSignature();
         }
         _registerRacer(racerId, raceId, payoutTo);
@@ -127,7 +144,7 @@ contract ByteRaces {
             revert RaceDetailsAlreadyPosted(raceId);
         }
 
-        _raceDetails[raceId].racePosted = uint48(block.timestamp);
+        _raceDetails[raceId].racePosted = uint40(block.timestamp);
 
         emit RaceDetailsPosted(raceId, map, start);
     }
@@ -137,13 +154,17 @@ contract ByteRaces {
             revert RaceDetailsNotPosted(raceId);
         }
 
-        if (_raceDetails[raceId].winner != 0) {
-            revert RaceWinnerAlreadyPosted(raceId);
+        if (msg.sender != _raceDetails[raceId].creator) {
+            revert CreatorOnly();
         }
 
         address payoutTo = payoutAddress[raceId][winningRacerId];
         if (payoutTo == address(0)) {
             revert RacerNotRegistered(raceId, winningRacerId);
+        }
+
+        if (_raceDetails[raceId].winner != 0) {
+            revert RaceWinnerAlreadyPosted(raceId, _raceDetails[raceId].winner);
         }
 
         _raceDetails[raceId].winner = winningRacerId;
@@ -159,16 +180,20 @@ contract ByteRaces {
         emit RaceWinnerPosted(raceId, winningRacerId);
     }
 
-    function getRaceId(int8[][] calldata map, Position calldata startPosition) public view returns (bytes32) {
-        return keccak256(abi.encode(map, startPosition));
-    }
-
     function raceDetails(bytes32 raceId) external view returns (RaceDetails memory) {
         return _raceDetails[raceId];
     }
 
+    function getRaceId(int8[][] calldata map, Position calldata startPosition) public pure returns (bytes32) {
+        return keccak256(abi.encode(map, startPosition));
+    }
+
     function _registerRacer(uint256 racerId, bytes32 raceId, address payoutTo) internal {
-        if (_raceDetails[raceId].registrationEnd < block.timestamp) {
+        if (payoutTo == address(0)) {
+            revert ZeroAddress();
+        }
+
+        if (_raceDetails[raceId].registrationEnd <= block.timestamp) {
             revert RegistrationEnded();
         }
 
@@ -182,7 +207,13 @@ contract ByteRaces {
 
         payoutAddress[raceId][racerId] = payoutTo;
 
-        _raceDetails[raceId].totalFees += uint64(msg.value);
+        // extremely unlikely but, hey, gas is cheap
+        // .. though if gas is cheap, maybe I should use uint256 :D
+        if (_raceDetails[raceId].totalFees + msg.value > type(uint72).max) {
+            revert MaxFees();
+        }
+
+        _raceDetails[raceId].totalFees += uint72(msg.value);
 
         emit RacerRegistered(raceId, racerId);
     }

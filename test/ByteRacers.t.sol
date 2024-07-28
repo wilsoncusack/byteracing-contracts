@@ -2,7 +2,7 @@
 pragma solidity ^0.8.23;
 
 import {Test, console} from "forge-std/Test.sol";
-import {ByteRacers} from "../src/ByteRacers.sol";
+import {ByteRacers, ERC721} from "../src/ByteRacers.sol";
 
 contract ByteRacersTest is Test {
     ByteRacers public racers = new ByteRacers();
@@ -42,5 +42,35 @@ contract ByteRacersTest is Test {
         racers.mintTo(to, byteCode);
 
         assertEq(racers.balanceOf(to), 1);
+    }
+
+    function test_tokenURI_reverts_ifTokenDoesNotExist() public {
+        vm.expectRevert(ERC721.TokenDoesNotExist.selector);
+        racers.tokenURI(1);
+    }
+
+    function test_setTokenURI_setsCallToCorrectly() public {
+        vm.createSelectFork("https://mainnet.base.org");
+        racers = new ByteRacers();
+        bytes memory byteCode = "test";
+        vm.startPrank(address(1));
+        uint256 id = racers.mint(byteCode);
+        // based punks address
+        address callTo = 0xcB28749c24AF4797808364D71d71539bc01E76d4;
+        bytes memory callData = abi.encodeWithSelector(ERC721.tokenURI.selector, 1);
+        racers.setTokenURI(id, callTo, callData);
+
+        string memory uri = racers.tokenURI(id);
+        assertEq(uri, "ipfs://QmPiUqt9twpDjfeWLyk5Nwjg7sEzuNouDx1cqtjUvn5kTW/1");
+    }
+
+    function test_setTokenURI_setsURICorrectly() public {
+        bytes memory byteCode = "test";
+        vm.startPrank(address(1));
+        uint256 id = racers.mint(byteCode);
+        racers.setTokenURI(id, "test");
+
+        string memory uri = racers.tokenURI(id);
+        assertEq(uri, "test");
     }
 }
